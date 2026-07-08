@@ -100,5 +100,7 @@ def get_recommendations():
         return jsonify({'error': str(e)}), 500
 
 
-# For Vercel
+# For Vercel - this is required
+def handler(request, *args, **kwargs):
+    return app(request, *args, **kwargs)
 app = app
