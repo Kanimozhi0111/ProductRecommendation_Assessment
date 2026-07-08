@@ -1,6 +1,6 @@
 Flask
 Flask-CORS
 python-dotenv
-groq
+groq==0.31.1
 Werkzeug
 gunicorn
