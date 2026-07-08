@@ -1,17 +1,10 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
-from dotenv import load_dotenv
 from groq import Groq
-
-# Load environment variables
-load_dotenv()
 
 app = Flask(__name__)
 CORS(app, origins=["*"])
-
-# Initialize Groq client
-client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
 # Product database
 PRODUCTS = [
@@ -25,6 +18,11 @@ PRODUCTS = [
     {"id": 8, "name": "Sony WH-1000XM5", "category": "Headphones", "price": 299, "description": "Noise-cancelling"},
     {"id": 9, "name": "AirPods Pro 2", "category": "Headphones", "price": 249, "description": "Premium earbuds"}
 ]
+
+
+@app.route('/api/health', methods=['GET'])
+def health():
+    return jsonify({"status": "healthy"})
 
 
 @app.route('/api/products', methods=['GET'])
@@ -41,6 +39,24 @@ def get_recommendations():
         if not user_preference:
             return jsonify({'error': 'Please enter your preference'}), 400
 
+        # Simple fallback first (before using Groq)
+        # This ensures the endpoint works even if Groq fails
+        api_key = os.getenv('GROQ_API_KEY')
+        if not api_key:
+            # Fallback to simple keyword matching
+            recommended = []
+            keywords = user_preference.lower().split()
+            for product in PRODUCTS:
+                text = f"{product['name']} {product['category']} {product['description']} {product['price']}".lower()
+                for keyword in keywords:
+                    if keyword in text and product not in recommended:
+                        recommended.append(product)
+                        break
+            return jsonify({'recommendations': recommended, 'fallback': True})
+
+        # Use Groq API
+        client = Groq(api_key=api_key)
+
         product_list = '\n'.join([
             f"{p['id']}. {p['name']} - ${p['price']} - {p['category']} - {p['description']}"
             for p in PRODUCTS
@@ -54,12 +70,11 @@ def get_recommendations():
 
         Return ONLY the product IDs (comma-separated) that match this preference.
         Example: "1,3,5"
-        Be strict and only recommend products that clearly match.
         If none match, return "none".
         """
 
         response = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="mixtral-8x7b-32768",
             messages=[
                 {"role": "system", "content": "You are a product recommendation assistant. Only return product IDs."},
                 {"role": "user", "content": prompt}
@@ -75,27 +90,15 @@ def get_recommendations():
             try:
                 ids = [int(id.strip()) for id in ai_response.split(',')]
                 recommended_products = [p for p in PRODUCTS if p['id'] in ids]
-            except ValueError:
-                recommended_products = []
+            except:
+                pass
 
-        return jsonify({
-            'recommendations': recommended_products,
-            'preference': user_preference
-        })
+        return jsonify({'recommendations': recommended_products, 'fallback': False})
 
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    return jsonify({'status': 'healthy'})
-
-
-# This is required for Vercel
+# For Vercel
 app = app
-
-if __name__ == '__main__':
-    port = int(os.getenv('FLASK_PORT', 5000))
-    app.run(debug=True, port=port)
