@@ -4,13 +4,13 @@ import os
 from dotenv import load_dotenv
 from groq import Groq
 
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-# Update this line - allow all origins for Vercel
-CORS(app, origins=["*"])  # Allow all origins (works for any Vercel URL)
+CORS(app, origins=["*"])
 
-# Initialize Groq client (Change: Use Groq instead of OpenAI)
+# Initialize Groq client
 client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
 # Product database
@@ -29,13 +29,11 @@ PRODUCTS = [
 
 @app.route('/api/products', methods=['GET'])
 def get_products():
-    """Return all products"""
     return jsonify(PRODUCTS)
 
 
 @app.route('/api/recommendations', methods=['POST'])
 def get_recommendations():
-    """Get AI-powered product recommendations using Groq"""
     try:
         data = request.get_json()
         user_preference = data.get('preference', '').strip()
@@ -43,13 +41,11 @@ def get_recommendations():
         if not user_preference:
             return jsonify({'error': 'Please enter your preference'}), 400
 
-        # Create product list for AI prompt
         product_list = '\n'.join([
             f"{p['id']}. {p['name']} - ${p['price']} - {p['category']} - {p['description']}"
             for p in PRODUCTS
         ])
 
-        # Prompt for Groq
         prompt = f"""
         Products available:
         {product_list}
@@ -62,9 +58,8 @@ def get_recommendations():
         If none match, return "none".
         """
 
-        # Call Groq API (Change: Different API call)
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",  # Groq's model
+            model="llama3-8b-8192",
             messages=[
                 {"role": "system", "content": "You are a product recommendation assistant. Only return product IDs."},
                 {"role": "user", "content": prompt}
@@ -75,7 +70,6 @@ def get_recommendations():
 
         ai_response = response.choices[0].message.content.strip()
 
-        # Parse AI response
         recommended_products = []
         if ai_response.lower() != 'none':
             try:
@@ -91,14 +85,16 @@ def get_recommendations():
 
     except Exception as e:
         print(f"Error: {e}")
-        return jsonify({'error': 'Failed to get recommendations'}), 500
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
     return jsonify({'status': 'healthy'})
 
+
+# This is required for Vercel
+app = app
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5000))
